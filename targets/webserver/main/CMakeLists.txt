@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "main.c"
     INCLUDE_DIRS "."
-    REQUIRES wifi serial esp_http_server
+    REQUIRES wifi serial led esp_http_server
     EMBED_FILES "index.html"
 )
 

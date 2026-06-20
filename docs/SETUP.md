@@ -41,7 +41,7 @@ source ~/.idf-uv/bin/activate
 ./lib/esp-idf/install.sh esp32c6
 ```
 
-Then in **every shell** where you build, put `idf.py` on PATH:
+To put `idf.py` on PATH in a shell (for raw `idf.py` use):
 
 ```bash
 source ~/.idf-uv/bin/activate      # uv Python that ESP-IDF was bootstrapped from
@@ -49,6 +49,9 @@ source ~/.idf-uv/bin/activate      # uv Python that ESP-IDF was bootstrapped fro
 ```
 
 (Add an alias like `alias get_idf='source ~/.idf-uv/bin/activate && . ~/Documents/Microcontroller/esp32/esp32_c6_Iot/lib/esp-idf/export.sh'` to your shell rc.)
+
+**You usually don't need this**: `compile.sh`/`flash.sh` (and therefore `just`) auto-source the
+toolchain when `idf.py`/`esptool` aren't on PATH. Set `NO_IDF_AUTOSOURCE=1` to opt out.
 
 The RISC-V toolchain installs to `~/.espressif` (machine-global, outside the repo); only the
 ESP-IDF source itself is vendored in `lib/esp-idf`. `compile.sh` errors out early if `idf.py`
@@ -119,8 +122,7 @@ idf_component_register(SRCS "main.c" INCLUDE_DIRS "." REQUIRES led serial)
 ## 5. Build
 
 ```bash
-. $IDF_PATH/export.sh     # once per shell
-./compile.sh              # all targets
+./compile.sh              # all targets (auto-sources the toolchain if needed)
 ./compile.sh sweep        # one target
 ./compile.sh --clean sweep
 ```

@@ -23,3 +23,4 @@ void led_init(int gpio, bool active_low) {
 void led_on(void)     { s_on = true;  apply(); }
 void led_off(void)    { s_on = false; apply(); }
 void led_toggle(void) { s_on = !s_on; apply(); }
+bool led_is_on(void)  { return s_on; }

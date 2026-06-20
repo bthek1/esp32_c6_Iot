@@ -6,12 +6,59 @@
   <title>ESP32-C6 IoT</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@2/dist/htmx.min.js"></script>
-  <script src="https://unpkg.com/alpinejs@3/dist/cdn.min.js" defer></script>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center font-sans">
-  <main class="text-center space-y-4">
-    <h1 class="text-3xl font-bold">ESP32-C6 IoT</h1>
-    <p class="text-slate-400">Served from firmware over Wi-Fi.</p>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+  <main class="max-w-2xl mx-auto px-4 py-10 space-y-8">
+
+    <header class="text-center space-y-1">
+      <h1 class="text-3xl font-bold">ESP32-C6 IoT</h1>
+      <p class="text-slate-400 text-sm">Seeed XIAO ESP32-C6 · served from firmware over Wi-Fi</p>
+    </header>
+
+    <!-- ── LED control ─────────────────────────────────────────────── -->
+    <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">User LED <span class="text-slate-500 text-sm font-normal">GPIO15</span></h2>
+        <div id="led-status"
+             class="flex items-center gap-2 h-7"
+             hx-get="/api/led" hx-trigger="load" hx-swap="innerHTML">
+          <span class="inline-block w-4 h-4 rounded-full bg-slate-600"></span>
+          <span class="text-xl font-semibold">…</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <button hx-post="/api/led/on"     hx-target="#led-status" hx-swap="innerHTML"
+                class="rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition py-2.5 font-medium">On</button>
+        <button hx-post="/api/led/off"    hx-target="#led-status" hx-swap="innerHTML"
+                class="rounded-xl bg-slate-600 hover:bg-slate-500 active:scale-95 transition py-2.5 font-medium">Off</button>
+        <button hx-post="/api/led/toggle" hx-target="#led-status" hx-swap="innerHTML"
+                class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition py-2.5 font-medium">Toggle</button>
+      </div>
+    </section>
+
+    <!-- ── Serial console ──────────────────────────────────────────── -->
+    <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Serial console</h2>
+        <span class="text-xs text-slate-500">live · refreshes every 1s</span>
+      </div>
+
+      <pre id="serial-log"
+           class="bg-black/50 rounded-xl p-4 h-64 overflow-auto text-xs leading-relaxed text-emerald-300 whitespace-pre-wrap break-words"
+           hx-get="/api/serial" hx-trigger="load, every 1s" hx-swap="innerHTML"
+           hx-on::after-settle="this.scrollTop = this.scrollHeight"></pre>
+
+      <form hx-post="/api/serial" hx-target="#serial-log" hx-swap="innerHTML"
+            hx-on::after-request="this.reset()"
+            class="flex gap-3">
+        <input name="msg" autocomplete="off" placeholder="Send a line to the console…"
+               class="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-4 py-2.5 text-sm
+                      focus:outline-none focus:border-indigo-500">
+        <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition px-5 font-medium">Send</button>
+      </form>
+    </section>
+
+    <footer class="text-center text-xs text-slate-600">esp32_c6_Iot · webserver target</footer>
   </main>
 </body>
 </html>
