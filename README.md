@@ -1,7 +1,7 @@
 # esp32_c6_Iot
 
 IoT firmware for the **ESP32-C6** (ESP-IDF, C). Multi-target layout with shared
-`components/`, compiled locally and flashed to the board over a **Raspberry Pi**.
+libraries under `lib/`, compiled locally and flashed to the board over a **Raspberry Pi**.
 Structured after the sibling `pico-servo` project.
 
 ## Quick start
@@ -28,16 +28,17 @@ See [docs/SETUP.md](docs/SETUP.md) for the full toolchain + wiring guide, and
 |---|---|
 | `blink` | toggles a GPIO LED (default) |
 | `sweep` | sweeps a hobby servo 0–180° via LEDC |
-| `webserver` | connects to Wi-Fi and serves an embedded page |
+| `webserver` | Wi-Fi + a tabbed dashboard (Tailwind/htmx/Alpine.js/uPlot): LED control, blink slider, serial console, live heap/temperature chart |
 
 ## Layout
 
 ```
-components/   shared: led, serial, servo, wifi
+lib/          shared components: led, serial, servo, wifi (+ esp-idf submodule)
 targets/      one ESP-IDF project each: blink, sweep, webserver
 compile.sh    build all or one target (local, needs idf.py)
 flash.sh      merge image + flash via Pi (esptool over /dev/ttyACM0)
 justfile      deploy / compile / flash / monitor
 ```
 
-> ⚠️ Scaffolded template — not yet compiled or flashed. See the Status note in CLAUDE.md.
+> ℹ️ `blink` is hardware-verified on the XIAO ESP32-C6. `sweep` and `webserver` build clean
+> but are not yet hardware-verified. See the Status note in CLAUDE.md.

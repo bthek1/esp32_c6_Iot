@@ -5,7 +5,10 @@
 #include <stdbool.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 
 #define HIST_LINES 40       // number of recent lines retained
 #define LINE_MAX   160      // max chars per stored line
@@ -62,6 +65,52 @@ void serial_print(const char *fmt, ...) {
 
 void serial_println(const char *fmt, ...) {
     va_list ap; va_start(ap, fmt); emit(fmt, ap, true); va_end(ap);
+}
+
+// Record a line typed on the physical console into the history (history only —
+// the input task already echoes keystrokes to the terminal). Prefixed with
+// "> " so console input is distinguishable from printed output on the web UI.
+void serial_feed_input(const char *line) {
+    lock();
+    feed("> ");
+    feed(line);
+    feed("\n");
+    unlock();
+}
+
+// Reads the USB-Serial-JTAG console byte-by-byte, echoes keystrokes back so the
+// typist sees them, and on Enter pushes the completed line into the history ring
+// so the webserver (or any serial_history() consumer) can show it.
+static void input_task(void *arg) {
+    (void)arg;
+    char   line[LINE_MAX];
+    size_t len = 0;
+    uint8_t buf[64];
+
+    for (;;) {
+        int n = usb_serial_jtag_read_bytes(buf, sizeof(buf), pdMS_TO_TICKS(100));
+        for (int i = 0; i < n; i++) {
+            char c = (char)buf[i];
+            if (c == '\r' || c == '\n') {
+                usb_serial_jtag_write_bytes("\r\n", 2, pdMS_TO_TICKS(20));
+                if (len) { line[len] = '\0'; serial_feed_input(line); len = 0; }
+            } else if (c == 0x7f || c == 0x08) {       // DEL / backspace
+                if (len) { len--; usb_serial_jtag_write_bytes("\b \b", 3, pdMS_TO_TICKS(20)); }
+            } else if ((unsigned char)c >= 0x20 && len < sizeof(line) - 1) {
+                line[len++] = c;
+                usb_serial_jtag_write_bytes(&buf[i], 1, pdMS_TO_TICKS(20));
+            }
+        }
+    }
+}
+
+void serial_start_input(void) {
+    usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+    if (usb_serial_jtag_driver_install(&cfg) != ESP_OK) return;
+    // Route stdout through the driver too, so printf output and the input task's
+    // echo share one serialized TX path instead of fighting over the peripheral.
+    usb_serial_jtag_vfs_use_driver();
+    xTaskCreate(input_task, "serial_in", 4096, NULL, 5, NULL);
 }
 
 size_t serial_history(char *out, size_t out_size) {

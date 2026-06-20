@@ -16,3 +16,8 @@ CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 
 # ── Misc ───────────────────────────────────────────────────────────────────
 CONFIG_FREERTOS_HZ=1000
+
+# Default event-loop ("sys_evt") task stack. The 2.3 KB default overflows when
+# the Wi-Fi/netif/DHCP handlers run in it (stack-protection panic on connect).
+# Only allocated for targets that create the default event loop (e.g. webserver).
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096

@@ -4,61 +4,214 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ESP32-C6 IoT</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" href="/favicon.ico">
+
+  <!-- Styling -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Interactivity / polling -->
   <script src="https://unpkg.com/htmx.org@2/dist/htmx.min.js"></script>
+  <!-- Time-series charts -->
+  <link rel="stylesheet" href="https://unpkg.com/uplot@1/dist/uPlot.min.css">
+  <script src="https://unpkg.com/uplot@1/dist/uPlot.iife.min.js"></script>
+  <!-- Reactive UI (tabs, sliders, state) — defer so it boots after the DOM -->
+  <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
+
+  <style>
+    .uplot, .u-wrap { width: 100% !important; }
+    .u-legend { font-size: .75rem; color: #cbd5e1; }
+  </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
-  <main class="max-w-2xl mx-auto px-4 py-10 space-y-8">
+  <main class="max-w-2xl mx-auto px-4 py-10 space-y-6"
+        x-data="dashboard()">
 
     <header class="text-center space-y-1">
       <h1 class="text-3xl font-bold">ESP32-C6 IoT</h1>
       <p class="text-slate-400 text-sm">Seeed XIAO ESP32-C6 · served from firmware over Wi-Fi</p>
     </header>
 
-    <!-- ── LED control ─────────────────────────────────────────────── -->
-    <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-5">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">User LED <span class="text-slate-500 text-sm font-normal">GPIO15</span></h2>
-        <div id="led-status"
-             class="flex items-center gap-2 h-7"
-             hx-get="/api/led" hx-trigger="load" hx-swap="innerHTML">
-          <span class="inline-block w-4 h-4 rounded-full bg-slate-600"></span>
-          <span class="text-xl font-semibold">…</span>
+    <!-- ── Tabs ─────────────────────────────────────────────────────────── -->
+    <nav class="flex gap-1 bg-slate-800/60 rounded-xl p-1 text-sm font-medium">
+      <template x-for="t in tabs" :key="t.id">
+        <button @click="tab = t.id"
+                class="flex-1 rounded-lg py-2 transition"
+                :class="tab === t.id ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'"
+                x-text="t.label"></button>
+      </template>
+    </nav>
+
+    <!-- ══ Dashboard ════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'dashboard'" class="space-y-6">
+
+      <!-- Live stats cards -->
+      <section class="grid grid-cols-3 gap-3">
+        <div class="bg-slate-800/60 rounded-2xl p-4 text-center shadow-lg">
+          <div class="text-xs uppercase tracking-wide text-slate-500">Temp</div>
+          <div class="text-2xl font-bold text-pink-300" x-text="fmt(last.temp, '°C')">—</div>
         </div>
-      </div>
-      <div class="grid grid-cols-3 gap-3">
-        <button hx-post="/api/led/on"     hx-target="#led-status" hx-swap="innerHTML"
-                class="rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition py-2.5 font-medium">On</button>
-        <button hx-post="/api/led/off"    hx-target="#led-status" hx-swap="innerHTML"
-                class="rounded-xl bg-slate-600 hover:bg-slate-500 active:scale-95 transition py-2.5 font-medium">Off</button>
-        <button hx-post="/api/led/toggle" hx-target="#led-status" hx-swap="innerHTML"
-                class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition py-2.5 font-medium">Toggle</button>
-      </div>
-    </section>
+        <div class="bg-slate-800/60 rounded-2xl p-4 text-center shadow-lg">
+          <div class="text-xs uppercase tracking-wide text-slate-500">Free heap</div>
+          <div class="text-2xl font-bold text-emerald-300" x-text="last.heap ? (last.heap/1024).toFixed(0)+' KB' : '—'">—</div>
+        </div>
+        <div class="bg-slate-800/60 rounded-2xl p-4 text-center shadow-lg">
+          <div class="text-xs uppercase tracking-wide text-slate-500">Uptime</div>
+          <div class="text-2xl font-bold text-indigo-300" x-text="uptimeStr">—</div>
+        </div>
+      </section>
 
-    <!-- ── Serial console ──────────────────────────────────────────── -->
-    <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Serial console</h2>
-        <span class="text-xs text-slate-500">live · refreshes every 1s</span>
-      </div>
+      <!-- uPlot time-series chart -->
+      <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Telemetry</h2>
+          <span class="text-xs text-slate-500">heap &amp; temperature · 1s</span>
+        </div>
+        <div id="chart"></div>
+      </section>
+    </div>
 
-      <pre id="serial-log"
-           class="bg-black/50 rounded-xl p-4 h-64 overflow-auto text-xs leading-relaxed text-emerald-300 whitespace-pre-wrap break-words"
-           hx-get="/api/serial" hx-trigger="load, every 1s" hx-swap="innerHTML"
-           hx-on::after-settle="this.scrollTop = this.scrollHeight"></pre>
+    <!-- ══ Control ══════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'control'" class="space-y-6">
+      <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">User LED <span class="text-slate-500 text-sm font-normal">GPIO15</span></h2>
+          <div id="led-status"
+               class="flex items-center gap-2 h-7"
+               hx-get="/api/led" hx-trigger="load" hx-swap="innerHTML">
+            <span class="inline-block w-4 h-4 rounded-full bg-slate-600"></span>
+            <span class="text-xl font-semibold">…</span>
+          </div>
+        </div>
 
-      <form hx-post="/api/serial" hx-target="#serial-log" hx-swap="innerHTML"
-            hx-on::after-request="this.reset()"
-            class="flex gap-3">
-        <input name="msg" autocomplete="off" placeholder="Send a line to the console…"
-               class="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-4 py-2.5 text-sm
-                      focus:outline-none focus:border-indigo-500">
-        <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition px-5 font-medium">Send</button>
-      </form>
-    </section>
+        <div class="grid grid-cols-3 gap-3">
+          <button hx-post="/api/led/on"     hx-target="#led-status" hx-swap="innerHTML"
+                  class="rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition py-2.5 font-medium">On</button>
+          <button hx-post="/api/led/off"    hx-target="#led-status" hx-swap="innerHTML"
+                  class="rounded-xl bg-slate-600 hover:bg-slate-500 active:scale-95 transition py-2.5 font-medium">Off</button>
+          <button hx-post="/api/led/toggle" hx-target="#led-status" hx-swap="innerHTML"
+                  class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition py-2.5 font-medium">Toggle</button>
+        </div>
+
+        <!-- Blink interval slider — Alpine drives the live label, htmx posts -->
+        <div class="space-y-2 pt-2 border-t border-slate-700/60">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium">Blink interval</span>
+            <span class="text-amber-300 font-mono" x-text="blinkMs + ' ms'"></span>
+          </div>
+          <input type="range" min="50" max="2000" step="50"
+                 name="ms" x-model="blinkMs"
+                 hx-post="/api/led/blink" hx-trigger="change throttle:250ms"
+                 hx-target="#led-status" hx-swap="innerHTML"
+                 class="w-full accent-amber-400 cursor-pointer">
+          <p class="text-xs text-slate-500">Move the slider to start blinking; On/Off/Toggle stops it.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ══ Console ══════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'console'" class="space-y-6">
+      <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Serial console</h2>
+          <span class="text-xs text-slate-500">live · refreshes every 1s</span>
+        </div>
+
+        <pre id="serial-log"
+             class="bg-black/50 rounded-xl p-4 h-64 overflow-auto text-xs leading-relaxed text-emerald-300 whitespace-pre-wrap break-words"
+             hx-get="/api/serial" hx-trigger="load, every 1s" hx-swap="innerHTML"
+             hx-on::after-settle="this.scrollTop = this.scrollHeight"></pre>
+
+        <form hx-post="/api/serial" hx-target="#serial-log" hx-swap="innerHTML"
+              hx-on::after-request="this.reset()"
+              class="flex gap-3">
+          <input name="msg" autocomplete="off" placeholder="Send a line to the console…"
+                 class="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-4 py-2.5 text-sm
+                        focus:outline-none focus:border-indigo-500">
+          <button class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition px-5 font-medium">Send</button>
+        </form>
+      </section>
+    </div>
 
     <footer class="text-center text-xs text-slate-600">esp32_c6_Iot · webserver target</footer>
   </main>
+
+  <script>
+    function dashboard() {
+      return {
+        tabs: [
+          { id: 'dashboard', label: 'Dashboard' },
+          { id: 'control',   label: 'Control'   },
+          { id: 'console',   label: 'Console'   },
+        ],
+        tab: 'dashboard',
+        blinkMs: 500,
+        last: { temp: null, heap: null, min_heap: null, uptime: 0 },
+
+        // uPlot ring buffer: [time, heapKB, temp], newest appended, capped.
+        _max: 90,
+        _data: [[], [], []],
+        _chart: null,
+
+        get uptimeStr() {
+          const s = this.last.uptime | 0;
+          const h = (s / 3600) | 0, m = ((s % 3600) / 60) | 0, ss = s % 60;
+          return h ? `${h}h${m}m` : (m ? `${m}m${ss}s` : `${ss}s`);
+        },
+
+        fmt(v, unit) { return (v === null || v === undefined) ? '—' : v.toFixed(1) + unit; },
+
+        init() {
+          this._buildChart();
+          window.addEventListener('resize', () => this._sizeChart());
+          this._poll();
+          setInterval(() => this._poll(), 1000);
+        },
+
+        _buildChart() {
+          const el = document.getElementById('chart');
+          if (this._chart) { this._chart.destroy(); el.innerHTML = ''; }  // never stack instances
+          const opts = {
+            width: el.clientWidth || 600,
+            height: 240,
+            cursor: { drag: { x: true, y: false } },
+            scales: { x: { time: true }, heap: {}, temp: {} },
+            series: [
+              {},
+              { label: 'Heap KB', scale: 'heap', stroke: '#34d399', width: 2, points: { show: false } },
+              { label: 'Temp °C', scale: 'temp', stroke: '#f472b6', width: 2, points: { show: false } },
+            ],
+            axes: [
+              { stroke: '#94a3b8', grid: { stroke: '#1e293b' }, ticks: { stroke: '#1e293b' } },
+              { scale: 'heap', stroke: '#34d399', grid: { stroke: '#1e293b' }, ticks: { stroke: '#1e293b' } },
+              { scale: 'temp', side: 1, stroke: '#f472b6', grid: { show: false }, ticks: { stroke: '#1e293b' } },
+            ],
+            legend: { live: true },
+          };
+          this._chart = new uPlot(opts, this._data, el);
+        },
+
+        _sizeChart() {
+          const el = document.getElementById('chart');
+          if (this._chart && el.clientWidth) this._chart.setSize({ width: el.clientWidth, height: 240 });
+        },
+
+        async _poll() {
+          try {
+            const r = await fetch('/api/stats', { cache: 'no-store' });
+            if (!r.ok) return;
+            const s = await r.json();
+            this.last = s;
+
+            const t = Date.now() / 1000;
+            this._data[0].push(t);
+            this._data[1].push(+(s.heap / 1024).toFixed(1));
+            this._data[2].push(s.temp);
+            if (this._data[0].length > this._max) this._data.forEach(a => a.shift());
+            if (this._chart) this._chart.setData(this._data);
+          } catch (e) { /* device may briefly drop; ignore */ }
+        },
+      };
+    }
+  </script>
 </body>
 </html>

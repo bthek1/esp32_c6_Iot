@@ -53,7 +53,7 @@ esp32_c6_Iot/
 └── targets/                ← one standalone IDF *project* per target
     ├── blink/              ← LED blink demo (DEFAULT_TARGET)
     ├── sweep/              ← servo sweep demo
-    └── webserver/          ← Wi-Fi + esp_http_server, embeds index.html
+    └── webserver/          ← Wi-Fi + esp_http_server, embeds index.html (tabbed dashboard)
 ```
 
 Each target is its own ESP-IDF project (its own `CMakeLists.txt` + `main/`). Build output
@@ -122,7 +122,9 @@ ESP32-C6 user LED on **GPIO15**. Not for addressable LEDs — this board has non
 
 ### `lib/serial` — console
 `serial_init()` (unbuffered stdout), `serial_print(fmt,...)`, `serial_println(fmt,...)`.
-Thin wrapper over `printf` on the USB-Serial-JTAG console.
+Thin wrapper over `printf` on the USB-Serial-JTAG console. Also keeps an in-memory ring
+buffer of recent lines: `serial_history(out, size)` copies it (used by the webserver to show
+the console remotely); `serial_start_input()`/`serial_feed_input(line)` record console input.
 
 ### `lib/servo` — hobby-servo PWM (LEDC)
 `servo_init(int gpio)`, `servo_set_us(gpio, us)` (clamped 500–2500), `servo_set_deg(gpio, deg)` (0–180).
@@ -131,6 +133,36 @@ Thin wrapper over `printf` on the USB-Serial-JTAG console.
 ### `lib/wifi` — Wi-Fi station
 `wifi_connect(ssid, pwd)` (blocking, inits NVS/netif/event loop/driver, retries, returns bool),
 `wifi_is_connected()`, `wifi_get_ip()`. WPA2-PSK. `REQUIRES esp_wifi esp_netif esp_event nvs_flash`.
+
+## Webserver target
+
+`targets/webserver` connects via `lib/wifi` and serves a single-page **tabbed dashboard**
+(`main/index.html`, embedded with `EMBED_FILES`). `logo.svg` (repo root) is embedded too and
+served as the favicon. The frontend pulls four libraries from CDNs (so the *viewing browser*
+needs internet; the ESP32 only serves the page):
+
+| Layer | Library | Used for |
+|---|---|---|
+| Styling | Tailwind CSS | `cdn.tailwindcss.com` |
+| Polling / requests | htmx 2 | LED buttons, console, blink-slider POSTs |
+| Reactive UI | Alpine.js 3 | tabs, live stat cards, slider state |
+| Charts | uPlot 1 (+CSS) | live heap + temperature time-series |
+
+The UI has three tabs: **Dashboard** (stat cards + uPlot chart fed by `/api/stats`),
+**Control** (LED on/off/toggle + a blink-interval slider), **Console** (serial log + send).
+
+HTTP endpoints (`main/main.c`, `max_uri_handlers = 16`):
+
+- `GET /` page · `GET /favicon.svg|.ico` logo
+- `GET /api/led`, `POST /api/led/{on,off,toggle}` — return an HTML status fragment
+- `POST /api/led/blink` (`ms=NNN`, clamped 50–5000) — starts blink mode; on/off/toggle stop it.
+  A background `blink_task` toggles the LED at `blink_ms` while `blink_on` is set.
+- `GET /api/serial` (HTML-escaped history) · `POST /api/serial` (`msg=...`, url-decoded, echoed)
+- `GET /api/stats` → JSON `{uptime, heap, min_heap, temp}` — uptime via `esp_timer`, heap via
+  `esp_system`, `temp` from the C6 on-chip sensor (`driver/temperature_sensor.h`).
+
+`main/CMakeLists.txt` `REQUIRES` adds `esp_timer` (uptime) and `esp_driver_tsens` (temp sensor)
+on top of `wifi serial led esp_http_server`.
 
 ## Secrets
 
@@ -163,7 +195,11 @@ root to its include path (see `targets/webserver/main/CMakeLists.txt`) and `#inc
 ✅ `blink` builds, flashes via the Pi, and runs on hardware (verified on a **Seeed Studio
 XIAO ESP32-C6**). It toggles the **plain user LED on GPIO15** (active-low) via `lib/led`;
 the LED visibly blinks. The red charge LED is hardwired to the charger and not controllable.
-`sweep` and `webserver` build clean but are not yet hardware-verified.
+
+`webserver` builds clean (~13% app-partition free) and serves the tabbed dashboard (Tailwind +
+htmx + Alpine.js + uPlot) with LED control, an adjustable blink mode, the serial console, and a
+live `/api/stats` telemetry chart (heap + on-chip temperature). `sweep` and `webserver` build
+clean but are not yet hardware-verified.
 
 `compile.sh`/`flash.sh` auto-source the ESP-IDF toolchain
 (`~/.idf-uv/bin/activate` + `lib/esp-idf/export.sh`) when `idf.py`/`esptool`
