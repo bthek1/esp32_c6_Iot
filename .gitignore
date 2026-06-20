@@ -1,0 +1,18 @@
+# build output (one dir per target)
+build/
+
+# secrets (copy from secrets.h.example)
+secrets.h
+
+# ESP-IDF per-project generated config
+sdkconfig
+sdkconfig.old
+**/sdkconfig
+**/sdkconfig.old
+
+# merged flash image
+firmware.bin
+
+# editor / OS
+*.swp
+.DS_Store

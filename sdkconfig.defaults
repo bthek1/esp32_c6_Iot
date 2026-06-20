@@ -1,0 +1,18 @@
+# Shared ESP-IDF defaults for every target in this repo.
+# Each target's CMakeLists.txt loads this file, then its own sdkconfig.defaults
+# (if present) on top. Per-project sdkconfig files are generated and gitignored.
+
+# ── Target chip ────────────────────────────────────────────────────────────
+CONFIG_IDF_TARGET="esp32c6"
+
+# ── Console over the built-in USB-Serial-JTAG (no external UART bridge) ─────
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# ── Flash ──────────────────────────────────────────────────────────────────
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# ── Misc ───────────────────────────────────────────────────────────────────
+CONFIG_FREERTOS_HZ=1000
