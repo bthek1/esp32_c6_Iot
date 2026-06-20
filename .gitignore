@@ -13,6 +13,10 @@ sdkconfig.old
 # merged flash image
 firmware.bin
 
+# ESP-IDF managed components (re-fetched from the registry on build;
+# dependencies.lock is committed to pin versions)
+**/managed_components/
+
 # editor / OS
 *.swp
 .DS_Store

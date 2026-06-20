@@ -47,6 +47,14 @@ BUILD_DIR="build/$TARGET"
 MODE="${REMOTE:+remote → $PI_HOST}"
 MODE="${MODE:-local}"
 
+# Auto-load the ESP-IDF toolchain (which provides esptool) if it isn't on PATH,
+# so flashing works from a cold shell (e.g. `just deploy`). Opt out with NO_IDF_AUTOSOURCE.
+if ! command -v esptool >/dev/null 2>&1 && ! command -v esptool.py >/dev/null 2>&1 \
+   && [ -z "$NO_IDF_AUTOSOURCE" ]; then
+    [ -f "$HOME/.idf-uv/bin/activate" ] && source "$HOME/.idf-uv/bin/activate"
+    [ -f "lib/esp-idf/export.sh" ] && . lib/esp-idf/export.sh >/dev/null 2>&1
+fi
+
 # pick an esptool entrypoint
 if command -v esptool.py >/dev/null 2>&1; then ESPTOOL="esptool.py"
 elif command -v esptool >/dev/null 2>&1; then ESPTOOL="esptool"

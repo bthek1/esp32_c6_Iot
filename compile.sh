@@ -39,7 +39,13 @@ if [ -z "$TARGET" ] && [ -f "$SECRETS" ]; then
 fi
 
 # ── preflight ──────────────────────────────────────────────────────────────
-command -v idf.py >/dev/null 2>&1 || die "idf.py not found — run '. \$IDF_PATH/export.sh' first (see docs/SETUP.md)"
+# Auto-load the ESP-IDF toolchain if idf.py isn't already on PATH, so the build
+# works from a cold shell (e.g. `just deploy`). Sourcing is opt-out via NO_IDF_AUTOSOURCE.
+if ! command -v idf.py >/dev/null 2>&1 && [ -z "$NO_IDF_AUTOSOURCE" ]; then
+    [ -f "$HOME/.idf-uv/bin/activate" ] && source "$HOME/.idf-uv/bin/activate"
+    [ -f "lib/esp-idf/export.sh" ] && . lib/esp-idf/export.sh >/dev/null 2>&1
+fi
+command -v idf.py >/dev/null 2>&1 || die "idf.py not found — run 'source ~/.idf-uv/bin/activate && . lib/esp-idf/export.sh' first (see docs/SETUP.md)"
 
 # which targets to build
 if [ -n "$TARGET" ]; then
