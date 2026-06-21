@@ -57,7 +57,7 @@ Rules of thumb:
 
 ## 1. Install ESP-IDF (this machine — the compiler)
 
-ESP-IDF is **vendored as a git submodule** at `lib/esp-idf` (pinned to `v5.3`), mirroring how
+ESP-IDF is **vendored as a git submodule** at `lib/esp-idf` (pinned to `v5.5.4`), mirroring how
 the sibling `pico-servo` project vendors `pico-sdk`. After cloning this repo:
 
 ```bash
@@ -117,10 +117,11 @@ esp32_c6_Iot/
 ├── sdkconfig.defaults          ← shared IDF config (chip, console, flash)
 ├── secrets.h(.example)         ← Wi-Fi creds + DEFAULT_TARGET
 ├── lib/                        ← ESP-IDF + shared libraries (each is an IDF component)
-│   ├── esp-idf/                ← ESP-IDF v5.3 (git submodule; IDF_PATH points here)
+│   ├── esp-idf/                ← ESP-IDF v5.5.4 (git submodule; IDF_PATH points here)
+│   ├── esp-matter/             ← esp-matter + connectedhomeip (submodule; matter_strip only)
 │   └── led/ serial/ servo/ strip/ sysinfo/ web/ wifi/   ← shared, reused across targets
 └── targets/                    ← one standalone IDF project each
-    ├── blink/  └── webserver/
+    ├── blink/  ├── webserver/  └── matter_strip/
         ├── CMakeLists.txt      ← project root
         └── main/
             ├── CMakeLists.txt  ← idf_component_register
@@ -176,9 +177,9 @@ A successful build leaves `build/<target>/<target>.bin` and a `flash_args` manif
 ```
 
 What happens:
-1. `esptool merge_bin @flash_args` locally → single `firmware.bin` (flashable at `0x0`)
+1. `esptool merge-bin @flash_args` locally → single `firmware.bin` (flashable at `0x0`)
 2. `scp` to `pi:~/esp-flash/<target>.bin`
-3. `ssh pi esptool --chip esp32c6 -p /dev/ttyACM0 write_flash 0x0 <target>.bin`
+3. `ssh pi esptool --chip esp32c6 -p /dev/ttyACM0 write-flash 0x0 <target>.bin`
 
 Flash an ESP32-C6 plugged into **this** machine instead:
 

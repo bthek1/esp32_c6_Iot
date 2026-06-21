@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // WS2812B (NeoPixel) addressable LED strip driven by the ESP32-C6 RMT TX
 // peripheral. One RMT channel feeds the whole strip from an in-RAM GRB pixel
 // buffer; call strip_show() to flush the buffer out the data line.
@@ -19,3 +23,7 @@ void strip_clear(void);                                     // buffer all pixels
 void strip_set_brightness(uint8_t b);                       // 0–255 global scale, applied on write
 void strip_show(void);                                      // blocking flush of the buffer to the strip
 int  strip_count(void);                                     // configured LED count
+
+#ifdef __cplusplus
+}
+#endif

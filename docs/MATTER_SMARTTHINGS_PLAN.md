@@ -1,9 +1,15 @@
 # Plan: ESP32-C6 → Matter color light → Samsung SmartThings
 
-Turn the **Seeed Studio XIAO ESP32-C6** into a Matter device that pairs directly with the
-**SmartThings phone app** (no SmartThings hub required) and exposes the external **WS2812B 300-LED
-strip** (DIN on **GPIO2**, driven by `lib/strip` + `strip_fx`) as a controllable **colour light**
-(on/off + brightness + colour).
+Turn the **Seeed Studio XIAO ESP32-C6** into a Matter device that exposes the external
+**WS2812B 300-LED strip** (DIN on **GPIO2**, driven by `lib/strip` + `strip_fx`) as a controllable
+**colour light** (on/off + brightness + colour), usable from SmartThings / Apple / Google / Alexa /
+chip-tool / Home Assistant.
+
+> ⚠️ **Correction:** an earlier draft said "no hub required" — that's wrong. The *phone* only
+> **commissions** the device; ongoing control needs an always-on **Matter controller**. SmartThings
+> requires a Samsung hub (Station / hub / 2022+ TV / Family Hub / compatible Galaxy). For a hubless
+> setup, control it with **chip-tool** or **Home Assistant's Matter Server** (e.g. on the Pi).
+> This device has been **verified working with chip-tool** (commission + on/off/brightness/colour).
 
 - **Integration path:** Matter **over Wi-Fi** (the C6 also supports Thread, but Wi-Fi
   commissions straight from the phone with no Thread Border Router).
@@ -14,6 +20,32 @@ strip** (DIN on **GPIO2**, driven by `lib/strip` + `strip_fx`) as a controllable
   `strip_fx_set_brightness` / `strip_fx_set_color`). One uniform-colour facet of the strip is what
   Matter controls; the richer animated patterns stay available through the existing web UI (both
   go through `strip_fx`, the single owner of strip state).
+
+> ✅ **Status: implemented and building.** ESP-IDF is bumped to **v5.5.4**, `lib/esp-matter`
+> (+ connectedhomeip) is set up, and **`targets/matter_strip` builds clean** (`./compile.sh
+> matter_strip`, app ~`0x1a54d0`, ~12% free in the 2 MB OTA partition). Not yet flashed /
+> commissioned on hardware. Real-world corrections vs. the original plan below:
+> - Root `CMakeLists.txt` needs the **full esp-matter example boilerplate** (sets `MATTER_SDK_PATH`,
+>   includes the `esp32c6_devkit_c` device-HAL cmake, and adds the matter component dirs) — the
+>   minimal blink-style CMake fails with an empty `MATTER_SDK_PATH`.
+> - `sdkconfig.defaults` + `partitions.csv` are the **esp-matter light-example pair** (they enable
+>   `CONFIG_MBEDTLS_HKDF_C`, lwIP hooks, a dual-OTA + `fctry` table, and disable unused clusters).
+>   The minimal overlay link-fails on `mbedtls_hkdf`.
+> - `main.cpp` uses **`extended_color_light::create(node, &cfg, flags, priv)`** (per-device-type),
+>   not the generic `endpoint::create`. The shared C headers got `extern "C"` guards so the C++
+>   TU links against the C libs.
+> - **Colour needed an extra feature.** esp-matter's `extended_color_light` enables colour-temp + XY
+>   but **not** Hue/Saturation, so `CurrentHue`/`CurrentSaturation` were `UNSUPPORTED_ATTRIBUTE` and
+>   the HSV callback never fired. `main.cpp` adds it after `create()`:
+>   `cluster::color_control::feature::hue_saturation::add(...)`. Verified: `move-to-hue-and-saturation`
+>   → ColorMode 0, Hue/Sat update, strip recolours.
+> - **chip-tool host build deps:** `libssl-dev libdbus-1-dev libglib2.0-dev libavahi-client-dev
+>   libevent-dev` + `checkout_submodules.py --platform linux`, then
+>   `gn_build_example.sh examples/chip-tool ./out/host`.
+> - The toolchain Python env must be created with the **system** python3.12, not from inside the
+>   `~/.idf-uv` venv (`idf_tools.py install-python-env` refuses to nest venvs).
+> - `compile.sh` sources `esp-matter/export.sh` automatically for `matter*` targets, and now
+>   checks `${PIPESTATUS[0]}` so a failed `idf.py` is no longer masked by the log pipe.
 
 > ⚠️ **Scope note.** This is a large addition. `esp-matter` pulls in the upstream
 > **connectedhomeip** SDK (several GB of submodules) and the first build is long (tens of
@@ -336,7 +368,7 @@ Then:
 
 ```bash
 ./compile.sh matter_strip        # first build is long (connectedhomeip compiles)
-./flash.sh --remote matter_strip # merge + scp + esptool write_flash 0x0 via Pi
+./flash.sh --remote matter_strip # merge + scp + esptool write-flash 0x0 via Pi
 just monitor                     # ssh pi picocom -b 115200 /dev/ttyACM0  → read the QR/code
 ```
 
@@ -355,6 +387,18 @@ just monitor                     # ssh pi picocom -b 115200 /dev/ttyACM0  → re
 
 1. Power the C6 **and the strip's 5 V supply**; open the serial monitor and note the **QR URL** /
    **manual setup code**.
+
+   > **Default test credentials.** This build sets `CONFIG_ENABLE_TEST_SETUP_PARAMS=y` (vendor
+   > `0xFFF1`, product `0x8000`), so it uses the standard CHIP example commissioning values —
+   > you don't have to read them off the console:
+   > - **Manual pairing code: `3497-011-2332`** (digits `34970112332`)
+   > - **QR payload: `MT:Y.K9042C00KA0648G00`**
+   > - discriminator `3840`, passcode `20202021`
+   >
+   > SmartThings will warn it's an uncertified/test device — accept that for DIY use. Verified on
+   > hardware: the device boots from `0x20000`, starts the CHIP Wi-Fi layer, and advertises over
+   > BLE (`bleAdv … Start slow advertisement`) ready to commission. Read the live code any time
+   > with `just monitor` (press reset to see the boot banner).
 2. SmartThings app → **Add device** → **Scan QR code** (or **Enter setup code** /
    **Partner devices → Matter**).
 3. The phone connects over **BLE**, asks which **2.4 GHz Wi-Fi** to join, and pushes the

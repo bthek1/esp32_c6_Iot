@@ -55,10 +55,24 @@ if ! command -v esptool >/dev/null 2>&1 && ! command -v esptool.py >/dev/null 2>
     [ -f "lib/esp-idf/export.sh" ] && . lib/esp-idf/export.sh >/dev/null 2>&1
 fi
 
-# pick an esptool entrypoint
-if command -v esptool.py >/dev/null 2>&1; then ESPTOOL="esptool.py"
-elif command -v esptool >/dev/null 2>&1; then ESPTOOL="esptool"
+# pick an esptool entrypoint (prefer the non-.py name; '.py' is deprecated)
+if command -v esptool >/dev/null 2>&1; then ESPTOOL="esptool"
+elif command -v esptool.py >/dev/null 2>&1; then ESPTOOL="esptool.py"
 else die "esptool not found locally — needed to merge the firmware image (pip install esptool)"; fi
+
+# esptool 5.x renamed subcommands to hyphens (merge-bin / write-flash); 4.x uses
+# underscores (merge_bin / write_flash). The local esptool (IDF-bundled) and the
+# Pi's esptool can differ, so probe each one's --help for which spelling it
+# actually accepts (parsing the version string is unreliable — 4.x prints a
+# deprecation notice mentioning "v5.0").
+esptool_subcmds() {  # echo "hyphen" if this esptool's help lists merge-bin, else "underscore"
+    if "$1" --help 2>&1 | grep -q 'merge-bin'; then echo hyphen; else echo underscore; fi
+}
+if [ "$(esptool_subcmds "$ESPTOOL")" = hyphen ]; then
+    MERGE_BIN="merge-bin"; WRITE_FLASH="write-flash"
+else
+    MERGE_BIN="merge_bin"; WRITE_FLASH="write_flash"
+fi
 
 # ── header ─────────────────────────────────────────────────────────────────
 echo
@@ -70,9 +84,9 @@ step "Preflight"
 [ -f "$BUILD_DIR/flash_args" ] || die "no build for '$TARGET' — run ./compile.sh $TARGET first"
 
 MERGED="$BUILD_DIR/firmware.bin"
-( cd "$BUILD_DIR" && "$ESPTOOL" --chip "$CHIP" merge_bin -o firmware.bin @flash_args ) \
+( cd "$BUILD_DIR" && "$ESPTOOL" --chip "$CHIP" "$MERGE_BIN" -o firmware.bin @flash_args ) \
     | sed "s/^/${GRAY}       /" | sed "s/$/${RESET}/"
-[ -f "$MERGED" ] || die "merge_bin did not produce firmware.bin"
+[ -f "$MERGED" ] || die "$MERGE_BIN did not produce firmware.bin"
 info "Image:  $MERGED  ${YELLOW}($(du -h "$MERGED" | cut -f1))${RESET}"
 
 # ── remote flash (via the Pi) ──────────────────────────────────────────────
@@ -85,17 +99,18 @@ if [ "$REMOTE" -eq 1 ]; then
 
     step "Flash on ${PI_HOST}  ${GRAY}${PI_PORT}${RESET}"
     ssh "$PI_HOST" "
-        if command -v esptool.py >/dev/null 2>&1; then ET=esptool.py
-        elif command -v esptool >/dev/null 2>&1; then ET=esptool
+        if command -v esptool >/dev/null 2>&1; then ET=esptool
+        elif command -v esptool.py >/dev/null 2>&1; then ET=esptool.py
         else echo 'esptool not found on $PI_HOST — pip install esptool' >&2; exit 1; fi
-        \$ET --chip $CHIP -p $PI_PORT -b $BAUD write_flash 0x0 $PI_FLASH_DIR/${TARGET}.bin
+        if \$ET --help 2>&1 | grep -q 'write-flash'; then WF=write-flash; else WF=write_flash; fi
+        \$ET --chip $CHIP -p $PI_PORT -b $BAUD \$WF 0x0 $PI_FLASH_DIR/${TARGET}.bin
     "
     ok "Flashed — ESP32-C6 resetting"
 
 # ── local flash ────────────────────────────────────────────────────────────
 else
     step "Flash  ${GRAY}${LOCAL_PORT}${RESET}"
-    "$ESPTOOL" --chip "$CHIP" -p "$LOCAL_PORT" -b "$BAUD" write_flash 0x0 "$MERGED"
+    "$ESPTOOL" --chip "$CHIP" -p "$LOCAL_PORT" -b "$BAUD" "$WRITE_FLASH" 0x0 "$MERGED"
     ok "Flashed — ESP32-C6 resetting"
 fi
 

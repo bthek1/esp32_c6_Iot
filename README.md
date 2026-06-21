@@ -32,14 +32,15 @@ See [docs/SETUP.md](docs/SETUP.md) for the full toolchain + wiring guide, and
 | `blink` | toggles a GPIO LED (default) |
 | `sweep` | sweeps a hobby servo 0–180° via LEDC (lib present; target not built yet) |
 | `webserver` | Wi-Fi + a tabbed dashboard (Tailwind/htmx/Alpine.js/uPlot): user-LED control + blink slider, **WS2812B strip control** (9 patterns, base colour, brightness, speed, per-LED editing + live preview), serial console, live heap/temperature chart |
+| `matter_strip` | WS2812B strip as a **Matter Extended Color Light** — commissions into SmartThings/Alexa/Google/Apple over Wi-Fi (no hub). Needs ESP-IDF v5.5.4 + esp-matter; see [docs/MATTER_SMARTTHINGS_PLAN.md](docs/MATTER_SMARTTHINGS_PLAN.md) |
 | `unit_test` | on-device Unity test runner for `led`/`strip`/`sysinfo`/`wifi` (not a firmware app — flash to run the suite) |
 
 ## Layout
 
 ```
 lib/          shared components: led, serial, servo, strip (+strip_fx), sysinfo,
-              web, wifi (+ esp-idf submodule)
-targets/      one ESP-IDF project each: blink, webserver, unit_test
+              web, wifi (+ esp-idf & esp-matter submodules)
+targets/      one ESP-IDF project each: blink, webserver, matter_strip, unit_test
 test/host/    host-side unit tests (plain gcc + vendored Unity, no hardware)
 compile.sh    build all or one target (local, needs idf.py)
 flash.sh      merge image + flash via Pi (esptool over /dev/ttyACM0)

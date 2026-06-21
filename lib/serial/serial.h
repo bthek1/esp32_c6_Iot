@@ -2,6 +2,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Thin wrapper over the ESP-IDF console (USB-Serial-JTAG by default).
 // Mirrors the pico-servo `serial` API so target code reads the same.
 // Besides printing, it keeps an in-memory ring buffer of recent lines so a UI
@@ -23,3 +27,7 @@ void serial_feed_input(const char *line);
 // Always NUL-terminates; returns bytes written (excluding the terminator).
 // Safe to call from another task, e.g. an HTTP handler.
 size_t serial_history(char *out, size_t out_size);
+
+#ifdef __cplusplus
+}
+#endif

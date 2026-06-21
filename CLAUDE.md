@@ -30,7 +30,7 @@ The ESP32-C6 is connected to a **Raspberry Pi** (the flash/monitor machine).
   Load the toolchain with `source ~/.idf-uv/bin/activate && . lib/esp-idf/export.sh`. Toolchains
   install to `~/.espressif` (machine-global); only the IDF source is vendored in-repo.
 - The Pi does **not** need ESP-IDF — only `esptool` (`pip install esptool`) and the device plugged in
-- Flashing copies a single merged `firmware.bin` to the Pi and runs `esptool write_flash 0x0`
+- Flashing copies a single merged `firmware.bin` to the Pi and runs `esptool write-flash 0x0`
 
 All terminal commands run locally unless noted otherwise.
 
@@ -45,7 +45,8 @@ esp32_c6_Iot/
 ├── secrets.h               ← Wi-Fi creds + DEFAULT_TARGET (gitignored)
 ├── secrets.h.example       ← template (committed)
 ├── lib/                    ← ESP-IDF + shared libraries (each is an IDF component)
-│   ├── esp-idf/            ← ESP-IDF v5.3 (git submodule; IDF_PATH points here)
+│   ├── esp-idf/            ← ESP-IDF v5.5.4 (git submodule; IDF_PATH points here)
+│   ├── esp-matter/         ← esp-matter + connectedhomeip (git submodule; matter_strip only)
 │   ├── led/                ← plain on/off GPIO LED (active-high or -low) + blink mode
 │   ├── serial/             ← printf-over-console wrapper
 │   ├── servo/              ← hobby-servo PWM via LEDC
@@ -58,6 +59,7 @@ esp32_c6_Iot/
 └── targets/                ← one standalone IDF *project* per target
     ├── blink/              ← LED blink demo (DEFAULT_TARGET)
     ├── webserver/          ← Wi-Fi + esp_http_server, embeds index.html (tabbed dashboard)
+    ├── matter_strip/       ← WS2812B strip as a Matter Extended Color Light (SmartThings)
     └── unit_test/          ← on-device Unity test runner (led/strip/sysinfo/wifi)
                               (a `sweep` servo demo is planned; lib/servo exists, no target yet)
 ```
@@ -99,9 +101,9 @@ Default target is **`blink`** (from `DEFAULT_TARGET` in `secrets.h`).
 ESP-IDF produces several images (bootloader @ 0x0, partition table @ 0x8000, app @ 0x10000)
 plus a `build/<target>/flash_args` manifest. `flash.sh`:
 
-1. runs `esptool merge_bin @flash_args` locally → one `firmware.bin` flashable at `0x0`
+1. runs `esptool merge-bin @flash_args` locally → one `firmware.bin` flashable at `0x0`
 2. `scp`s it to `pi:~/esp-flash/<target>.bin`
-3. `ssh pi esptool --chip esp32c6 -p /dev/ttyACM0 write_flash 0x0 <target>.bin`
+3. `ssh pi esptool --chip esp32c6 -p /dev/ttyACM0 write-flash 0x0 <target>.bin`
 
 This keeps the Pi dependency to just `esptool`. Override via env: `ESP_PI_HOST`, `ESP_PI_PORT`,
 `ESP_CHIP`, `ESP_BAUD`, `ESP_PORT` (local).
@@ -233,6 +235,37 @@ fragment. The low-level work lives in the components. `main/CMakeLists.txt` `REQ
 `wifi serial led strip web sysinfo esp_http_server` (the `esp_timer` / `esp_driver_tsens` deps
 moved into `lib/sysinfo`).
 
+## Matter target (`matter_strip`)
+
+`targets/matter_strip` exposes the **WS2812B strip as a Matter Extended Color Light** that
+commissions into **SmartThings** (or any Matter controller) over Wi-Fi — no hub. On/Off, Level
+Control and Color Control attribute callbacks drive `lib/strip`'s `strip_fx` (mode / brightness /
+HSV→RGB colour). The richer animated patterns stay in the webserver target; both go through
+`strip_fx`. Build with `./compile.sh matter_strip`; the first build is long (connectedhomeip
+compiles). Plan + commissioning steps: [docs/MATTER_SMARTTHINGS_PLAN.md](docs/MATTER_SMARTTHINGS_PLAN.md).
+
+Key differences from the plain IDF targets:
+
+- **Needs ESP-IDF v5.5.4** (esp-matter is pinned to it) — the whole repo was bumped from v5.3.
+- **esp-matter** lives at `lib/esp-matter` (submodule, with connectedhomeip inside). `compile.sh`
+  sources `lib/esp-matter/export.sh` (and exports `ESP_MATTER_PATH`) **only** for `matter*`
+  targets, so blink/webserver stay light. Set up once with `lib/esp-matter/install.sh`.
+- The root `CMakeLists.txt` mirrors the esp-matter example boilerplate (sets `MATTER_SDK_PATH`,
+  a device-HAL include for `esp32c6_devkit_c`, and the matter component dirs) — not the minimal
+  blink-style CMake.
+- Its `sdkconfig.defaults` + `partitions.csv` are the esp-matter light-example pair (HKDF/mbedtls,
+  lwIP hooks, dual-OTA + `fctry` table, unused clusters disabled). Don't trim them blindly.
+- `main.cpp` (C++): the shared C headers (`strip.h`, `strip_fx.h`, `serial.h`) carry
+  `extern "C"` guards so the C++ TU links against the C-compiled libs. Use `extended_color_light::create`
+  (the per-device-type create), not the generic `endpoint::create`.
+- **Colour gotcha:** esp-matter's `extended_color_light` enables the colour-temperature + XY colour
+  features but **not** Hue/Saturation, so `CurrentHue`/`CurrentSaturation` read back
+  `UNSUPPORTED_ATTRIBUTE` and the HSV callback never fires. `main.cpp` explicitly adds the feature
+  after `create()`: `cluster::color_control::feature::hue_saturation::add(cluster, &cfg)`. With it,
+  `move-to-hue-and-saturation` switches ColorMode→0 and drives `strip_fx_set_color`.
+
+Builds clean: app ~`0x1a54d0` bytes, ~12% free in the 2 MB OTA partition.
+
 ## Secrets
 
 `secrets.h` (gitignored) at the repo root defines:
@@ -299,6 +332,10 @@ All 14 on-device cases pass on hardware. See `targets/unit_test/README.md`.
 
 ## Status
 
+The repo is on **ESP-IDF v5.5.4** (bumped from v5.3 for esp-matter). The toolchain installs to
+`~/.espressif`; the idf5.5 Python env lives at `~/.espressif/python_env/idf5.5_py3.12_env`
+(`~/.idf-uv` only supplies the python3.12 interpreter). All targets build on v5.5.4.
+
 ✅ `blink` builds, flashes via the Pi, and runs on hardware (verified on a **Seeed Studio
 XIAO ESP32-C6**). It toggles the **plain user LED on GPIO15** (active-low) via `lib/led`;
 the LED visibly blinks. The red charge LED is hardwired to the charger and not controllable.
@@ -311,6 +348,21 @@ the serial console, and a live `/api/stats` telemetry chart (heap + on-chip temp
 It runs on hardware and drives a real **5 m WS2812B** strip on GPIO2 (LEDs light up; `STRIP_COUNT`
 is `60*5` = 300). The animated patterns/single-LED editing are wired end-to-end but not every
 pattern has been eyeballed on the strip yet. No `sweep` target exists yet (only `lib/servo`).
+
+`matter_strip` **builds, flashes, and runs on hardware** (app ~`0x1a54d0`, ~12% free in the 2 MB
+OTA partition) on ESP-IDF v5.5.4 + esp-matter. It exposes the strip as a Matter Extended Color
+Light; verified booting from `0x20000`, starting the CHIP Wi-Fi layer, and **advertising over BLE
+for commissioning**. Uses the standard CHIP test setup params (manual pairing code `3497-011-2332`).
+**Verified end-to-end with chip-tool** (built from connectedhomeip on the dev machine — needs
+`libssl-dev`, `libdbus-1-dev`, `libglib2.0-dev`, `libavahi-client-dev`, `libevent-dev`, plus the
+`--platform linux` submodules): commissioned over BLE→Wi-Fi (`pairing ble-wifi`), and on/off,
+brightness (Level), and colour (Hue/Sat) all read back correctly and drive `strip_fx`. SmartThings
+itself needs a Samsung hub/Station (Matter-over-Wi-Fi requires an always-on controller) — for a
+hubless setup use chip-tool or Home Assistant's Matter Server.
+
+Flashing this needed a `flash.sh` fix: the local IDF esptool is 4.x (underscore subcommands
+`merge_bin`/`write_flash`) while the Pi's is 5.x (hyphen `merge-bin`/`write-flash`) — `flash.sh`
+now probes each esptool's `--help` for the spelling it supports.
 
 `compile.sh`/`flash.sh` auto-source the ESP-IDF toolchain
 (`~/.idf-uv/bin/activate` + `lib/esp-idf/export.sh`) when `idf.py`/`esptool`

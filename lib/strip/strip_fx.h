@@ -2,6 +2,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // High-level effect/state engine layered over the low-level strip driver
 // (strip.h). Owns the current mode, base colour, global brightness, animation
 // speed and the per-pixel "custom" buffer, and runs a background task that
@@ -45,3 +49,7 @@ int  strip_fx_speed(void);
 
 void strip_fx_set_pixel(int i, uint8_t r, uint8_t g, uint8_t b);  // one LED (also selects CUSTOM)
 int  strip_fx_dump_hex(char *out, int cap);      // "rrggbb" per LED of the last frame → length
+
+#ifdef __cplusplus
+}
+#endif

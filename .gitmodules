@@ -1,5 +1,8 @@
 [submodule "lib/esp-idf"]
 	path = lib/esp-idf
 	url = https://github.com/espressif/esp-idf.git
-	branch = v5.3
+	branch = v5.5.4
 	shallow = true
+[submodule "lib/esp-matter"]
+	path = lib/esp-matter
+	url = https://github.com/espressif/esp-matter.git

@@ -75,10 +75,23 @@ build_one() {
         info "Removed $out/"
     fi
 
+    # Matter targets need the esp-matter environment exported on top of IDF.
+    # Only matter* targets pay this cost; sourced once per run.
+    if [[ "$name" == matter* ]] && [ -z "$ESP_MATTER_SOURCED" ]; then
+        export ESP_MATTER_PATH="$PWD/lib/esp-matter"
+        [ -f "$ESP_MATTER_PATH/export.sh" ] || die "esp-matter not found at $ESP_MATTER_PATH (see docs/MATTER_SMARTTHINGS_PLAN.md)"
+        info "Sourcing esp-matter environment"
+        . "$ESP_MATTER_PATH/export.sh" >/dev/null 2>&1
+        export ESP_MATTER_SOURCED=1
+    fi
+
     local START=$SECONDS
     idf.py -C "$proj" -B "$out" build 2>&1 \
         | sed "s/^/${GRAY}       /" \
         | sed "s/$/${RESET}/"
+    # ${PIPESTATUS[0]} is idf.py's exit code (not sed's) — without this a failed
+    # build is hidden by the pipe and reported as success.
+    [ "${PIPESTATUS[0]}" -eq 0 ] || die "build failed for $name"
     ok "Built $name  ${GRAY}($((SECONDS - START)) s)${RESET}"
 
     local BIN
