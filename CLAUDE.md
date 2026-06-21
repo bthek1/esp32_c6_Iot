@@ -40,7 +40,7 @@ All terminal commands run locally unless noted otherwise.
 esp32_c6_Iot/
 ├── compile.sh              ← build all, or one target: ./compile.sh [target]
 ├── flash.sh                ← merge image + flash via Pi (or local): ./flash.sh [--remote] [target]
-├── justfile                ← just commands: deploy, compile, flash, monitor
+├── justfile                ← just commands: deploy, compile, flash, monitor, test, test-device
 ├── sdkconfig.defaults      ← shared IDF config (target chip, console, flash)
 ├── secrets.h               ← Wi-Fi creds + DEFAULT_TARGET (gitignored)
 ├── secrets.h.example       ← template (committed)
@@ -53,9 +53,12 @@ esp32_c6_Iot/
 │   ├── sysinfo/            ← on-chip temperature + uptime/heap stats JSON
 │   ├── web/                ← esp_http_server helpers (body/form parsing, routes, responses)
 │   └── wifi/               ← Wi-Fi station connect
+├── test/                   ← host-side tests (run on the dev machine, no board)
+│   └── host/               ← plain gcc + vendored Unity; lib/web parser tests
 └── targets/                ← one standalone IDF *project* per target
     ├── blink/              ← LED blink demo (DEFAULT_TARGET)
-    └── webserver/          ← Wi-Fi + esp_http_server, embeds index.html (tabbed dashboard)
+    ├── webserver/          ← Wi-Fi + esp_http_server, embeds index.html (tabbed dashboard)
+    └── unit_test/          ← on-device Unity test runner (led/strip/sysinfo/wifi)
                               (a `sweep` servo demo is planned; lib/servo exists, no target yet)
 ```
 
@@ -85,6 +88,8 @@ just compile webserver  # compile one target
 just flash webserver    # flash one target via Pi
 just flash-local webserver # flash a target via this machine
 just monitor          # ssh pi picocom -b 115200 /dev/ttyACM0
+just test             # host-side unit tests (gcc + Unity, no board)
+just test-device      # compile + flash + monitor the on-device Unity tests
 ```
 
 Default target is **`blink`** (from `DEFAULT_TARGET` in `secrets.h`).
@@ -241,6 +246,43 @@ moved into `lib/sysinfo`).
 `compile.sh`/`flash.sh` read `DEFAULT_TARGET` from it. A target that needs creds adds the repo
 root to its include path (see `targets/webserver/main/CMakeLists.txt`) and `#include "secrets.h"`.
 
+## Testing
+
+Two layers, both using **Unity** (vendored in `lib/esp-idf/components/unity`).
+
+### Host tests — `test/host/` (`just test`)
+Pure-logic library code compiled and run **on the dev machine** with plain `gcc` +
+Unity. No ESP-IDF, no board — fast feedback. Currently covers `lib/web`'s form
+parsers (`web_form_color` / `web_form_int` / `web_form_str` / `web_html_escape`).
+
+`lib/web` declares `REQUIRES esp_http_server`, but those parsers never call the
+server, so `test/host/stubs/esp_http_server.h` (+ `stubs.c`) is a minimal compile/link
+stand-in — **not** a behavioural mock. Build is a hand-written `Makefile`; add a suite
+by dropping `test_<name>.c` and extending its `TESTS`. Unity needs `setUp`/`tearDown`
+defined (empty is fine) and 64-bit asserts are off on the host build too — match the
+device. See `test/host/README.md`.
+
+### On-device tests — `targets/unit_test/` (`just test-device`)
+A normal IDF target that exercises **real peripherals** (GPIO, RMT, temp sensor) and a
+live Wi-Fi connect, printing standard Unity output (CI-drivable via `pytest-embedded`).
+One suite file per lib under `main/` (`test_led/strip/sysinfo/wifi.c`), each exposing a
+`run_<lib>_tests()` that `main.c` calls between `UNITY_BEGIN()`/`UNITY_END()`. Gotchas
+baked into the current suites:
+
+- **64-bit Unity asserts are disabled** in this IDF build — use `TEST_ASSERT_*_INT`,
+  not `*_INT64` (or you get `Unity 64-bit Support Disabled`).
+- **`lib/strip`** has no deinit and the C6 has few RMT channels → init the strip **once**
+  and share it; the show-completes test times the blocking flush to prove RMT ran.
+- **`lib/wifi`** `wifi_connect()` inits NVS/netif/event-loop and aborts if run twice → the
+  wifi suite runs **last** and connects once (ignored, not failed, if `secrets.h` still
+  has placeholder creds). Needs `secrets.h` on the include path, like `webserver`.
+- The runner **idles** after `UNITY_END()` so results aren't lost to a reboot loop.
+
+All 14 on-device cases pass on hardware. See `targets/unit_test/README.md`.
+
+> ⚠️ `just test-device` ends in `picocom`, which holds `/dev/ttyACM0`. A later `flash.sh`
+> then fails with "port busy" until you exit picocom (`C-a C-x`) or `ssh pi fuser -k /dev/ttyACM0`.
+
 ## What to Avoid
 
 - Committing `sdkconfig`, `sdkconfig.old`, `build/`, `firmware.bin`, or `secrets.h`.
@@ -274,3 +316,8 @@ pattern has been eyeballed on the strip yet. No `sweep` target exists yet (only 
 (`~/.idf-uv/bin/activate` + `lib/esp-idf/export.sh`) when `idf.py`/`esptool`
 aren't on `PATH`, so `just deploy` works from a cold shell. Opt out with
 `NO_IDF_AUTOSOURCE=1`.
+
+Testing is in place (see the **Testing** section). Host tests (`just test`, `lib/web`
+parsers, 16 cases) pass on the dev machine; the on-device `unit_test` target
+(`just test-device`, `led`/`strip`/`sysinfo`/`wifi`, 14 cases) builds (~18% app-partition
+free) and **all 14 pass on hardware** — including a live Wi-Fi connect.
