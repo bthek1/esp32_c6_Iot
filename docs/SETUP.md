@@ -20,6 +20,41 @@ multi-target project, and flashing it through a Raspberry Pi.
 
 ---
 
+## External WS2812B LED strip (webserver target)
+
+The `webserver` target drives an **external 5 V WS2812B** strip (`lib/strip` + `strip_fx`, RMT on
+**GPIO2**). This is separate from the onboard LED — the board has no addressable RGB of its own.
+
+Firmware knobs in [`targets/webserver/main/main.c`](../targets/webserver/main/main.c):
+
+```c
+#define STRIP_PIN   2          // D2 on the XIAO — strip DIN
+#define STRIP_COUNT (60 * 5)   // LED count (5 m × 60 LED/m = 300); set to your strip
+```
+
+Wiring — the strip is powered from its **own 5 V supply**, never the XIAO's 5V pin:
+
+```
+  5V supply ──┬── +5V ──► strip +5V        (inject at both ends for a full 5 m run)
+              │
+  XIAO GND ───┼── GND ──► strip GND        ← common ground is REQUIRED
+              │
+  XIAO D2 ────┴── [~75–330 Ω] ──► strip DIN  (series resistor on the data line)
+```
+
+Rules of thumb:
+
+- **Common ground** between supply, XIAO and strip — the #1 cause of "nothing/garbage" output.
+- **Direction matters**: feed DIN at the end the printed arrows point *away* from.
+- **Power budget**: ≈60 mA/LED at full white → a 300-LED strip can pull ~18 A. Size the supply for
+  your real usage; firmware defaults brightness low (64/255). For long runs the far end dims/reddens
+  (voltage drop) — inject +5V/GND at both ends.
+- Optional but recommended: a ~330 Ω series resistor on data and a ~1000 µF cap across +5V/GND at
+  the strip input. The XIAO's 3.3 V data usually drives WS2812B directly; add a 3.3→5 V level
+  shifter only if the first LEDs misbehave.
+
+---
+
 ## 1. Install ESP-IDF (this machine — the compiler)
 
 ESP-IDF is **vendored as a git submodule** at `lib/esp-idf` (pinned to `v5.3`), mirroring how
@@ -83,9 +118,9 @@ esp32_c6_Iot/
 ├── secrets.h(.example)         ← Wi-Fi creds + DEFAULT_TARGET
 ├── lib/                        ← ESP-IDF + shared libraries (each is an IDF component)
 │   ├── esp-idf/                ← ESP-IDF v5.3 (git submodule; IDF_PATH points here)
-│   └── led/ serial/ servo/ wifi/   ← shared, reused across targets
+│   └── led/ serial/ servo/ strip/ sysinfo/ web/ wifi/   ← shared, reused across targets
 └── targets/                    ← one standalone IDF project each
-    ├── blink/  ├── sweep/  └── webserver/
+    ├── blink/  └── webserver/
         ├── CMakeLists.txt      ← project root
         └── main/
             ├── CMakeLists.txt  ← idf_component_register
@@ -123,8 +158,8 @@ idf_component_register(SRCS "main.c" INCLUDE_DIRS "." REQUIRES led serial)
 
 ```bash
 ./compile.sh              # all targets (auto-sources the toolchain if needed)
-./compile.sh sweep        # one target
-./compile.sh --clean sweep
+./compile.sh webserver    # one target
+./compile.sh --clean webserver
 ```
 
 Or `just compile [target]` / `just compile-clean [target]`.
@@ -137,7 +172,7 @@ A successful build leaves `build/<target>/<target>.bin` and a `flash_args` manif
 
 ```bash
 ./flash.sh --remote          # default target
-./flash.sh --remote sweep    # specific target
+./flash.sh --remote webserver # specific target
 ```
 
 What happens:
@@ -148,7 +183,7 @@ What happens:
 Flash an ESP32-C6 plugged into **this** machine instead:
 
 ```bash
-./flash.sh sweep             # local, uses /dev/ttyACM0
+./flash.sh webserver         # local, uses /dev/ttyACM0
 ```
 
 Override defaults with env vars: `ESP_PI_HOST`, `ESP_PI_PORT`, `ESP_CHIP`, `ESP_BAUD`, `ESP_PORT`.

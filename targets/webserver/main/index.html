@@ -60,6 +60,53 @@
         </div>
       </section>
 
+      <!-- Resources: inventory + live usage with % bars -->
+      <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Resources</h2>
+          <span class="text-xs text-slate-500" x-text="res.cpu_mhz ? ('RISC-V · ' + res.cpu_mhz + ' MHz · ' + res.tasks + ' tasks') : 'ESP32-C6'"></span>
+        </div>
+
+        <!-- RAM (heap) -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium">RAM <span class="text-slate-500 font-normal">internal heap</span></span>
+            <span class="font-mono text-slate-300">
+              <span x-text="kb(res.ram_used)">—</span> / <span x-text="kb(res.ram_total)">—</span>
+              <span class="text-emerald-300" x-text="pct(res.ram_used, res.ram_total)"></span>
+            </span>
+          </div>
+          <div class="h-2.5 rounded-full bg-slate-700/70 overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-500"
+                 :class="barColor(res.ram_used, res.ram_total)"
+                 :style="'width:' + pctNum(res.ram_used, res.ram_total) + '%'"></div>
+          </div>
+          <p class="text-xs text-slate-500">
+            <span x-text="kb(res.ram_free)">—</span> free ·
+            peak used <span x-text="kb(res.ram_total - res.ram_min_free)">—</span>
+          </p>
+        </div>
+
+        <!-- App firmware in flash -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium">Firmware <span class="text-slate-500 font-normal">app partition</span></span>
+            <span class="font-mono text-slate-300">
+              <span x-text="kb(res.app_used)">—</span> / <span x-text="kb(res.app_part)">—</span>
+              <span class="text-indigo-300" x-text="pct(res.app_used, res.app_part)"></span>
+            </span>
+          </div>
+          <div class="h-2.5 rounded-full bg-slate-700/70 overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-500"
+                 :class="barColor(res.app_used, res.app_part)"
+                 :style="'width:' + pctNum(res.app_used, res.app_part) + '%'"></div>
+          </div>
+          <p class="text-xs text-slate-500">
+            of <span x-text="mb(res.flash_total)">—</span> total flash chip
+          </p>
+        </div>
+      </section>
+
       <!-- uPlot time-series chart -->
       <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-3">
         <div class="flex items-center justify-between">
@@ -108,6 +155,102 @@
       </section>
     </div>
 
+    <!-- ══ Strip ════════════════════════════════════════════════════════ -->
+    <div x-show="tab === 'strip'" class="space-y-6">
+      <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">LED Strip <span class="text-slate-500 text-sm font-normal">WS2812B · GPIO2</span></h2>
+          <div id="strip-status"
+               class="flex items-center gap-2 h-7"
+               hx-get="/api/strip" hx-trigger="load" hx-swap="innerHTML">
+            <span class="inline-block w-4 h-4 rounded-full bg-slate-600"></span>
+            <span class="text-xl font-semibold">…</span>
+          </div>
+        </div>
+
+        <!-- Pattern picker — Alpine tracks the active mode for highlighting -->
+        <div class="grid grid-cols-3 gap-2">
+          <template x-for="p in patterns" :key="p.id">
+            <button @click="setMode(p.id)"
+                    class="rounded-xl py-2.5 font-medium transition active:scale-95"
+                    :class="stripMode === p.id ? 'bg-indigo-600 text-white shadow' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'"
+                    x-text="p.label"></button>
+          </template>
+        </div>
+
+        <!-- Base colour — tints solid + most patterns (Rainbow/Fire make their own) -->
+        <div class="flex items-center justify-between pt-2 border-t border-slate-700/60">
+          <span class="font-medium text-sm">Base colour</span>
+          <input type="color" name="c" value="#ff5000"
+                 hx-post="/api/strip/color" hx-trigger="change"
+                 hx-target="#strip-status" hx-swap="innerHTML"
+                 class="w-16 h-9 bg-transparent cursor-pointer rounded">
+        </div>
+
+        <!-- Global brightness slider -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium">Brightness</span>
+            <span class="text-amber-300 font-mono" x-text="stripBright"></span>
+          </div>
+          <input type="range" min="0" max="255" step="1"
+                 name="v" x-model="stripBright"
+                 hx-post="/api/strip/brightness" hx-trigger="change throttle:200ms"
+                 hx-target="#strip-status" hx-swap="innerHTML"
+                 class="w-full accent-amber-400 cursor-pointer">
+        </div>
+
+        <!-- Animation speed slider -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium">Speed</span>
+            <span class="text-amber-300 font-mono" x-text="stripSpeed"></span>
+          </div>
+          <input type="range" min="1" max="10" step="1"
+                 name="v" x-model="stripSpeed"
+                 hx-post="/api/strip/speed" hx-trigger="change throttle:200ms"
+                 hx-target="#strip-status" hx-swap="innerHTML"
+                 class="w-full accent-fuchsia-400 cursor-pointer">
+          <p class="text-xs text-slate-500">Strip is on GPIO2; set the LED count in firmware (STRIP_COUNT). Power a long strip from a separate 5 V supply.</p>
+        </div>
+
+        <!-- Live preview — one cell per LED; click a cell to pick it for editing -->
+        <div class="space-y-2 pt-2 border-t border-slate-700/60">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium">Preview</span>
+            <span class="text-slate-500" x-text="stripPixels.length + ' LEDs'"></span>
+          </div>
+          <div class="flex flex-wrap gap-0.5 bg-black/40 rounded-xl p-2 max-h-44 overflow-auto">
+            <template x-for="(c, i) in stripPixels" :key="i">
+              <button @click="selPixel = i" :title="'LED ' + i"
+                      class="w-2.5 h-5 rounded-sm border border-black/30 transition"
+                      :class="selPixel === i ? 'ring-2 ring-white scale-110' : ''"
+                      :style="'background:' + c"></button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Single-LED editor — sets just the selected pixel (switches to custom mode) -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-sm">
+            <span class="font-medium">Edit LED <span class="font-mono text-indigo-300" x-text="'#' + selPixel"></span></span>
+            <div class="flex items-center gap-3">
+              <input type="color" :value="stripPixels[selPixel] || '#000000'"
+                     @change="setPixel($event.target.value)"
+                     class="w-12 h-8 bg-transparent cursor-pointer rounded">
+              <button @click="setPixel('#000000')"
+                      class="rounded-lg bg-slate-700 hover:bg-slate-600 active:scale-95 transition px-3 py-1.5 text-xs font-medium">Off</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <input type="range" min="0" :max="Math.max(0, stripPixels.length - 1)" step="1"
+                   x-model.number="selPixel" class="flex-1 accent-indigo-400 cursor-pointer">
+            <span class="text-xs text-slate-500 w-20 text-right">pick index</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <!-- ══ Console ══════════════════════════════════════════════════════ -->
     <div x-show="tab === 'console'" class="space-y-6">
       <section class="bg-slate-800/60 rounded-2xl p-6 shadow-lg space-y-4">
@@ -141,11 +284,30 @@
         tabs: [
           { id: 'dashboard', label: 'Dashboard' },
           { id: 'control',   label: 'Control'   },
+          { id: 'strip',     label: 'Strip'     },
           { id: 'console',   label: 'Console'   },
         ],
         tab: 'dashboard',
         blinkMs: 500,
+        stripBright: 64,
+        stripSpeed: 5,
+        stripMode: 'off',  // active pattern (for button highlighting)
+        patterns: [
+          { id: 'solid',   label: 'Solid'   },
+          { id: 'rainbow', label: 'Rainbow' },
+          { id: 'breathe', label: 'Breathe' },
+          { id: 'chase',   label: 'Chase'   },
+          { id: 'wipe',    label: 'Wipe'    },
+          { id: 'scanner', label: 'Scanner' },
+          { id: 'twinkle', label: 'Twinkle' },
+          { id: 'fire',    label: 'Fire'    },
+          { id: 'off',     label: 'Off'     },
+        ],
+        stripPixels: [],   // ['#rrggbb', …] live strip colours for the preview
+        selPixel: 0,       // index currently selected for single-LED editing
         last: { temp: null, heap: null, min_heap: null, uptime: 0 },
+        res:  { ram_total: 0, ram_used: 0, ram_free: 0, ram_min_free: 0,
+                flash_total: 0, app_part: 0, app_used: 0, tasks: 0, cpu_mhz: 0 },
 
         // uPlot ring buffer: [time, heapKB, temp], newest appended, capped.
         _max: 90,
@@ -160,11 +322,66 @@
 
         fmt(v, unit) { return (v === null || v === undefined) ? '—' : v.toFixed(1) + unit; },
 
+        // Resource formatters — bytes → KB/MB, and used/total → percent.
+        kb(b)  { return b ? (b / 1024).toFixed(b < 1024 * 100 ? 1 : 0) + ' KB' : '—'; },
+        mb(b)  { return b ? (b / 1048576).toFixed(b % 1048576 ? 1 : 0) + ' MB' : '—'; },
+        pctNum(u, t) { return t ? Math.min(100, (u / t) * 100) : 0; },
+        pct(u, t)    { return t ? '(' + this.pctNum(u, t).toFixed(0) + '%)' : ''; },
+        barColor(u, t) {
+          const p = this.pctNum(u, t);
+          return p >= 90 ? 'bg-rose-500' : p >= 75 ? 'bg-amber-400' : 'bg-emerald-400';
+        },
+
         init() {
           this._buildChart();
           window.addEventListener('resize', () => this._sizeChart());
           this._poll();
           setInterval(() => this._poll(), 1000);
+          // Resources move slowly (firmware size is static, heap drifts) — poll less often.
+          this._pollResources();
+          setInterval(() => this._pollResources(), 3000);
+          // Keep the strip preview live while its tab is open.
+          this.loadPixels();
+          setInterval(() => { if (this.tab === 'strip') this.loadPixels(); }, 1000);
+        },
+
+        // Pull the strip's current colours ("rrggbb" per LED) for the preview.
+        async loadPixels() {
+          try {
+            const r = await fetch('/api/strip/pixels', { cache: 'no-store' });
+            if (!r.ok) return;
+            const t = await r.text();
+            const arr = [];
+            for (let k = 0; k + 6 <= t.length; k += 6) arr.push('#' + t.substr(k, 6));
+            this.stripPixels = arr;
+          } catch (e) { /* device may briefly drop; ignore */ }
+        },
+
+        // Select a pattern; updates the status fragment and preview.
+        async setMode(m) {
+          this.stripMode = m;
+          try {
+            const r = await fetch('/api/strip/mode', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ mode: m }),
+            });
+            if (r.ok) document.getElementById('strip-status').innerHTML = await r.text();
+            this.loadPixels();
+          } catch (e) { /* ignore */ }
+        },
+
+        // Set the selected LED to a colour (switches the strip to custom mode).
+        async setPixel(hex) {
+          this.stripMode = 'custom';
+          try {
+            await fetch('/api/strip/pixel', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ i: this.selPixel, c: hex }),
+            });
+            this.loadPixels();
+          } catch (e) { /* ignore */ }
         },
 
         _buildChart() {
@@ -193,6 +410,14 @@
         _sizeChart() {
           const el = document.getElementById('chart');
           if (this._chart && el.clientWidth) this._chart.setSize({ width: el.clientWidth, height: 240 });
+        },
+
+        async _pollResources() {
+          try {
+            const r = await fetch('/api/resources', { cache: 'no-store' });
+            if (!r.ok) return;
+            this.res = await r.json();
+          } catch (e) { /* device may briefly drop; ignore */ }
         },
 
         async _poll() {

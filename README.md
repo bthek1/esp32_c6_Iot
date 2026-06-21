@@ -27,18 +27,20 @@ See [docs/SETUP.md](docs/SETUP.md) for the full toolchain + wiring guide, and
 | Target | What it does |
 |---|---|
 | `blink` | toggles a GPIO LED (default) |
-| `sweep` | sweeps a hobby servo 0–180° via LEDC |
-| `webserver` | Wi-Fi + a tabbed dashboard (Tailwind/htmx/Alpine.js/uPlot): LED control, blink slider, serial console, live heap/temperature chart |
+| `sweep` | sweeps a hobby servo 0–180° via LEDC (lib present; target not built yet) |
+| `webserver` | Wi-Fi + a tabbed dashboard (Tailwind/htmx/Alpine.js/uPlot): user-LED control + blink slider, **WS2812B strip control** (9 patterns, base colour, brightness, speed, per-LED editing + live preview), serial console, live heap/temperature chart |
 
 ## Layout
 
 ```
-lib/          shared components: led, serial, servo, wifi (+ esp-idf submodule)
-targets/      one ESP-IDF project each: blink, sweep, webserver
+lib/          shared components: led, serial, servo, strip (+strip_fx), sysinfo,
+              web, wifi (+ esp-idf submodule)
+targets/      one ESP-IDF project each: blink, webserver
 compile.sh    build all or one target (local, needs idf.py)
 flash.sh      merge image + flash via Pi (esptool over /dev/ttyACM0)
 justfile      deploy / compile / flash / monitor
 ```
 
-> ℹ️ `blink` is hardware-verified on the XIAO ESP32-C6. `sweep` and `webserver` build clean
-> but are not yet hardware-verified. See the Status note in CLAUDE.md.
+> ℹ️ `blink` is hardware-verified on the XIAO ESP32-C6. `webserver` runs on hardware and drives
+> an external **WS2812B** strip on GPIO2 (wiring in [docs/SETUP.md](docs/SETUP.md)). See the
+> Status note in CLAUDE.md.

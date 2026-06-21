@@ -13,3 +13,10 @@ void led_on(void);
 void led_off(void);
 void led_toggle(void);
 bool led_is_on(void);                      // logical state (on == lit)
+
+// Blink mode: a background task toggles the LED every `period_ms`. Starting it
+// is non-blocking; the task is created on first use. led_on/off/toggle do *not*
+// stop it — call led_blink_stop() (the task itself drives led_toggle()).
+void led_blink(int period_ms);             // start/retune blink at this half-period
+void led_blink_stop(void);
+bool led_is_blinking(void);

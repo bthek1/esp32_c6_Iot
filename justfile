@@ -23,6 +23,13 @@ compile target='':
 compile-clean target='':
     ./compile.sh --clean {{target}}
 
+# ── Test ──────────────────────────────────────────────────────────────────────
+
+# run host-side unit tests (plain gcc + Unity, no hardware needed)
+[group('test')]
+test:
+    @make -C test/host
+
 # ── Device ────────────────────────────────────────────────────────────────────
 
 # flash a target to the ESP32-C6 via the Pi (default: from secrets.h)

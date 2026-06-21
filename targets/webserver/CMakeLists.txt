@@ -3,7 +3,10 @@ cmake_minimum_required(VERSION 3.16)
 set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../../lib/wifi"
     "${CMAKE_CURRENT_LIST_DIR}/../../lib/serial"
-    "${CMAKE_CURRENT_LIST_DIR}/../../lib/led")
+    "${CMAKE_CURRENT_LIST_DIR}/../../lib/led"
+    "${CMAKE_CURRENT_LIST_DIR}/../../lib/strip"
+    "${CMAKE_CURRENT_LIST_DIR}/../../lib/web"
+    "${CMAKE_CURRENT_LIST_DIR}/../../lib/sysinfo")
 set(SDKCONFIG_DEFAULTS   "${CMAKE_CURRENT_LIST_DIR}/../../sdkconfig.defaults")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
