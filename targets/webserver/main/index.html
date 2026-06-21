@@ -220,11 +220,12 @@
             <span class="font-medium">Preview</span>
             <span class="text-slate-500" x-text="stripPixels.length + ' LEDs'"></span>
           </div>
-          <div class="flex flex-wrap gap-0.5 bg-black/40 rounded-xl p-2 max-h-44 overflow-auto">
+          <div class="grid gap-0.5 bg-black/40 rounded-xl p-2 overflow-auto"
+               style="grid-template-columns: repeat(20, minmax(0, 1fr));">
             <template x-for="(c, i) in stripPixels" :key="i">
               <button @click="selPixel = i" :title="'LED ' + i"
-                      class="w-2.5 h-5 rounded-sm border border-black/30 transition"
-                      :class="selPixel === i ? 'ring-2 ring-white scale-110' : ''"
+                      class="aspect-square rounded-sm border border-black/30 transition"
+                      :class="selPixel === i ? 'ring-2 ring-white z-10 scale-110' : ''"
                       :style="'background:' + c"></button>
             </template>
           </div>

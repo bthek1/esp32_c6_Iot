@@ -17,6 +17,9 @@ just flash blink                 # flash via the Pi
 just monitor                     # serial monitor on the Pi
 
 just deploy blink                # compile + flash + monitor in one go
+
+just test                        # host-side unit tests (gcc + Unity, no board)
+just test-device                 # on-device Unity tests (flash + monitor)
 ```
 
 See [docs/SETUP.md](docs/SETUP.md) for the full toolchain + wiring guide, and

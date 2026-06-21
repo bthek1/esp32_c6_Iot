@@ -30,6 +30,10 @@ compile-clean target='':
 test:
     @make -C test/host
 
+# build, flash and monitor the on-device Unity tests on the ESP32-C6
+[group('test')]
+test-device: (compile "unit_test") (flash "unit_test") _wait-tty monitor
+
 # ── Device ────────────────────────────────────────────────────────────────────
 
 # flash a target to the ESP32-C6 via the Pi (default: from secrets.h)
