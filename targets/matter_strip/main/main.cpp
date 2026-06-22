@@ -8,6 +8,7 @@
 #include "serial.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <esp_system.h>
@@ -15,6 +16,8 @@
 #include <esp_matter_endpoint.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <setup_payload/OnboardingCodesUtil.h>
+#include <lib/support/logging/CHIPLogging.h>
+#include <platform/logging/LogV.h>
 
 using namespace esp_matter;
 using namespace esp_matter::endpoint;
@@ -75,6 +78,22 @@ static esp_err_t attribute_update_cb(attribute::callback_type_t type,
     return ESP_OK;
 }
 
+// CHIP routes its logs through this redirect; we drop the high-volume Progress/
+// Detail traffic from the message-layer modules (chip[EM] "Msg RX/TX/Ack",
+// chip[DMG], chip[IM] status spam) so the console stays readable. Errors from
+// those modules still pass through, and every other module logs as normal via
+// the default ESP32 backend. Our own serial_println status lines are printf and
+// bypass this entirely.
+static void chip_log_filter(const char *module, uint8_t category,
+                            const char *msg, va_list args) {
+    if (category > chip::Logging::kLogCategory_Error &&
+        (strcmp(module, "EM") == 0 || strcmp(module, "DMG") == 0 ||
+         strcmp(module, "IM") == 0)) {
+        return;
+    }
+    chip::Logging::Platform::LogV(module, category, msg, args);
+}
+
 // Report commissioning / connectivity milestones over the serial console so the
 // boot log shows exactly where we are: advertising, paired, on Wi-Fi, etc.
 static void matter_event_cb(const ChipDeviceEvent *event, intptr_t arg) {
@@ -120,19 +139,15 @@ extern "C" void app_main(void) {
     serial_println(" target: %s  idf: %s", "matter_strip", esp_get_idf_version());
     serial_println(" strip: gpio %d, %d leds", STRIP_PIN, STRIP_COUNT);
     serial_println("==================================================");
+
+    // Quiet CHIP's chatty message-layer modules before the stack starts logging.
+    chip::Logging::SetLogRedirectCallback(chip_log_filter);
     bool strip_ok = strip_init(STRIP_PIN, STRIP_COUNT);
     serial_println(strip_ok ? "strip init OK (gpio %d, %d leds)" : "strip init FAILED (gpio %d, %d leds)",
                    STRIP_PIN, STRIP_COUNT);
 
-    strip_fx_start();                 // background render task (lib/strip)
-
-    // DIAGNOSTIC: hold solid RED at full brightness via strip_fx from boot. If the
-    // strip is red after Matter starts, strip_fx renders fine under BLE/Wi-Fi and
-    // the issue is the callback path. If it's NOT red, the RMT backend can't drive
-    // the strip with the radios up → switch lib/strip to the SPI backend.
-    strip_fx_set_brightness(255);
-    strip_fx_set_color(255, 0, 0);
-    strip_fx_set_mode(STRIP_FX_SOLID);
+    strip_fx_start();                 // background render task (lib/strip); starts OFF
+                                      // until the controller turns the light on.
 
     // Matter node + an Extended Color Light endpoint.
     node::config_t node_cfg;
